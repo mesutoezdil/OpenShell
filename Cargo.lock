@@ -2785,7 +2785,7 @@ dependencies = [
  "hashbrown 0.16.1",
  "metrics",
  "quanta",
- "rand 0.9.2",
+ "rand 0.9.4",
  "rand_xoshiro",
  "sketches-ddsketch",
 ]
@@ -3193,8 +3193,11 @@ dependencies = [
  "miette",
  "nix",
  "openshell-core",
+ "openshell-vfio",
  "polling",
  "prost-types",
+ "serde",
+ "serde_json",
  "tar",
  "tokio",
  "tokio-stream",
@@ -3388,6 +3391,17 @@ dependencies = [
  "tonic",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "openshell-vfio"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

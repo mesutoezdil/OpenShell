@@ -205,7 +205,7 @@ impl ComputeRuntime {
         sandbox_watch_bus: SandboxWatchBus,
         tracing_log_bus: TracingLogBus,
         supervisor_sessions: Arc<SupervisorSessionRegistry>,
-        allows_loopback_endpoints: bool,
+        _allows_loopback_endpoints: bool,
     ) -> Result<Self, ComputeError> {
         let default_image = driver
             .get_capabilities(Request::new(GetCapabilitiesRequest {}))
@@ -847,6 +847,7 @@ fn driver_sandbox_spec_from_public(spec: &SandboxSpec) -> DriverSandboxSpec {
             .as_ref()
             .map(driver_sandbox_template_from_public),
         gpu: spec.gpu,
+        gpu_device: spec.gpu_device.clone(),
     }
 }
 
@@ -1213,6 +1214,7 @@ mod tests {
                 driver_version: "test".to_string(),
                 default_image: "openshell/sandbox:test".to_string(),
                 supports_gpu: true,
+                gpu_count: 0,
             }))
         }
 
