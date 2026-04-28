@@ -66,7 +66,7 @@ const GLOBAL_SETTINGS_OBJECT_TYPE: &str = "gateway_settings";
 const GLOBAL_SETTINGS_ID: &str = "gateway_settings:global";
 const GLOBAL_SETTINGS_NAME: &str = "global";
 /// Internal object type for durable sandbox-scoped settings.
-pub(crate) const SANDBOX_SETTINGS_OBJECT_TYPE: &str = "sandbox_settings";
+pub const SANDBOX_SETTINGS_OBJECT_TYPE: &str = "sandbox_settings";
 /// Reserved settings key used to store global policy payload.
 const POLICY_SETTING_KEY: &str = "policy";
 /// Sentinel `sandbox_id` used to store global policy revisions.
@@ -136,10 +136,10 @@ fn summarize_cli_policy_merge_op(operation: &PolicyMergeOp) -> String {
             rule_name,
             host,
             port,
-        } => match rule_name {
-            Some(rule_name) => format!("remove-endpoint {host}:{port} from rule {rule_name}"),
-            None => format!("remove-endpoint {host}:{port}"),
-        },
+        } => rule_name.as_ref().map_or_else(
+            || format!("remove-endpoint {host}:{port}"),
+            |rule_name| format!("remove-endpoint {host}:{port} from rule {rule_name}"),
+        ),
         PolicyMergeOp::RemoveRule { rule_name } => format!("remove-rule {rule_name}"),
         PolicyMergeOp::AddDenyRules {
             host,
@@ -1986,15 +1986,15 @@ fn validate_rule_not_always_blocked(rule: &NetworkPolicyRule) -> Result<(), Stat
 
     for ep in &rule.endpoints {
         // Check if the endpoint host is a literal always-blocked IP.
-        if let Ok(ip) = ep.host.parse::<IpAddr>() {
-            if is_always_blocked_ip(ip) {
-                return Err(Status::invalid_argument(format!(
-                    "proposed rule endpoint host '{}' is an always-blocked address \
-                     (loopback/link-local/unspecified); the proxy will deny traffic \
-                     to this destination regardless of policy",
-                    ep.host
-                )));
-            }
+        if let Ok(ip) = ep.host.parse::<IpAddr>()
+            && is_always_blocked_ip(ip)
+        {
+            return Err(Status::invalid_argument(format!(
+                "proposed rule endpoint host '{}' is an always-blocked address \
+                 (loopback/link-local/unspecified); the proxy will deny traffic \
+                 to this destination regardless of policy",
+                ep.host
+            )));
         }
         let host_lc = ep.host.to_lowercase();
         if host_lc == "localhost" || host_lc == "localhost." {
@@ -2013,14 +2013,14 @@ fn validate_rule_not_always_blocked(rule: &NetworkPolicyRule) -> Result<(), Stat
                     IpAddr::V6(v6) => ipnet::IpNet::V6(ipnet::Ipv6Net::from(v6)),
                 })
             });
-            if let Ok(net) = parsed {
-                if is_always_blocked_net(net) {
-                    return Err(Status::invalid_argument(format!(
-                        "proposed rule contains always-blocked allowed_ips entry '{entry}'; \
-                         SSRF hardening prevents traffic to these destinations \
-                         regardless of policy"
-                    )));
-                }
+            if let Ok(net) = parsed
+                && is_always_blocked_net(net)
+            {
+                return Err(Status::invalid_argument(format!(
+                    "proposed rule contains always-blocked `allowed_ips` entry '{entry}'; \
+                     SSRF hardening prevents traffic to these destinations \
+                     regardless of policy"
+                )));
             }
             // Invalid entries are not our concern here — the sandbox's
             // parse_allowed_ips handles syntax validation.
@@ -2421,7 +2421,7 @@ pub(super) async fn save_global_settings(
 }
 
 /// Derive a distinct settings record ID from a sandbox UUID.
-pub(crate) fn sandbox_settings_id(sandbox_id: &str) -> String {
+pub fn sandbox_settings_id(sandbox_id: &str) -> String {
     format!("settings:{sandbox_id}")
 }
 
@@ -2596,7 +2596,7 @@ mod tests {
             metadata: Some(openshell_core::proto::datamodel::v1::ObjectMeta {
                 id: "sb-no-policy".to_string(),
                 name: "no-policy-sandbox".to_string(),
-                created_at_ms: 1000000,
+                created_at_ms: 1_000_000,
                 labels: std::collections::HashMap::new(),
             }),
             spec: Some(SandboxSpec {
@@ -2626,7 +2626,7 @@ mod tests {
             metadata: Some(openshell_core::proto::datamodel::v1::ObjectMeta {
                 id: "sb-backfill".to_string(),
                 name: "backfill-sandbox".to_string(),
-                created_at_ms: 1000000,
+                created_at_ms: 1_000_000,
                 labels: std::collections::HashMap::new(),
             }),
             spec: Some(SandboxSpec {
@@ -2812,7 +2812,7 @@ mod tests {
         let sandbox_id = "sb-merge";
 
         let initial_policy = SandboxPolicy {
-            network_policies: [(
+            network_policies: std::iter::once((
                 "test_server".to_string(),
                 NetworkPolicyRule {
                     name: "test_server".to_string(),
@@ -2826,8 +2826,7 @@ mod tests {
                         ..Default::default()
                     }],
                 },
-            )]
-            .into_iter()
+            ))
             .collect(),
             ..Default::default()
         };
@@ -2912,7 +2911,7 @@ mod tests {
         let sandbox_id = "sb-new";
 
         let initial_policy = SandboxPolicy {
-            network_policies: [(
+            network_policies: std::iter::once((
                 "existing_rule".to_string(),
                 NetworkPolicyRule {
                     name: "existing_rule".to_string(),
@@ -2926,8 +2925,7 @@ mod tests {
                         ..Default::default()
                     }],
                 },
-            )]
-            .into_iter()
+            ))
             .collect(),
             ..Default::default()
         };
@@ -2998,7 +2996,7 @@ mod tests {
         let sandbox_id = "sb-concurrent-merge";
 
         let initial_policy = SandboxPolicy {
-            network_policies: [(
+            network_policies: std::iter::once((
                 "github".to_string(),
                 NetworkPolicyRule {
                     name: "github".to_string(),
@@ -3012,8 +3010,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
-            )]
-            .into_iter()
+            ))
             .collect(),
             ..Default::default()
         };
@@ -3229,8 +3226,7 @@ mod tests {
         let encoded = hex::encode(policy.encode_to_vec());
         let global = StoredSettings {
             revision: 1,
-            settings: [("policy".to_string(), StoredSettingValue::Bytes(encoded))]
-                .into_iter()
+            settings: std::iter::once(("policy".to_string(), StoredSettingValue::Bytes(encoded)))
                 .collect(),
         };
 
@@ -3379,20 +3375,18 @@ mod tests {
     fn merge_effective_settings_policy_key_is_excluded() {
         let global = StoredSettings {
             revision: 1,
-            settings: [(
+            settings: std::iter::once((
                 "policy".to_string(),
                 StoredSettingValue::Bytes("deadbeef".to_string()),
-            )]
-            .into_iter()
+            ))
             .collect(),
         };
         let sandbox = StoredSettings {
             revision: 1,
-            settings: [(
+            settings: std::iter::once((
                 "policy".to_string(),
                 StoredSettingValue::Bytes("cafebabe".to_string()),
-            )]
-            .into_iter()
+            ))
             .collect(),
         };
 

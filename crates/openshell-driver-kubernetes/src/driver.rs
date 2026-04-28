@@ -410,6 +410,8 @@ impl KubernetesComputeDriver {
         }
     }
 
+    // Kept `async` to match the gRPC handler signature in `grpc.rs`, which awaits this method.
+    #[allow(clippy::unused_async)]
     pub async fn watch_sandboxes(&self) -> Result<WatchStream, String> {
         let namespace = self.config.namespace.clone();
         let sandbox_api = self.watch_api();
@@ -579,7 +581,6 @@ fn sandbox_from_object(namespace: &str, obj: DynamicObject) -> Result<Sandbox, S
         namespace,
         spec: None,
         status,
-        ..Default::default()
     })
 }
 
@@ -769,7 +770,7 @@ fn apply_supervisor_sideload(pod_template: &mut serde_json::Value) {
 ///
 /// The PVC volume itself is **not** added here — the Sandbox CRD controller
 /// automatically creates a volume for each entry in `volumeClaimTemplates`
-/// (following the StatefulSet convention).  Adding one here would create a
+/// (following the `StatefulSet` convention).  Adding one here would create a
 /// duplicate volume name and fail pod validation.
 ///
 /// The init container mounts the PVC at a temporary path so it can still see
@@ -1158,10 +1159,7 @@ fn container_resources(template: &SandboxTemplate, gpu: bool) -> Option<serde_js
     if gpu {
         apply_gpu_limit(&mut resources);
     }
-    if resources
-        .as_object()
-        .is_some_and(|object| object.is_empty())
-    {
+    if resources.as_object().is_some_and(serde_json::Map::is_empty) {
         None
     } else {
         Some(resources)
@@ -1226,6 +1224,9 @@ fn apply_env_map(
     }
 }
 
+// Required env vars are passed individually for clarity at call sites; grouping into a struct
+// would not improve readability for this internal helper.
+#[allow(clippy::too_many_arguments)]
 fn apply_required_env(
     env: &mut Vec<serde_json::Value>,
     sandbox_id: &str,
@@ -1502,7 +1503,7 @@ mod tests {
             .expect("command should be set");
         assert_eq!(
             command[0].as_str().unwrap(),
-            format!("{}/openshell-sandbox", SUPERVISOR_MOUNT_PATH)
+            format!("{SUPERVISOR_MOUNT_PATH}/openshell-sandbox")
         );
 
         // Volume mount should be read-only
@@ -1596,13 +1597,12 @@ mod tests {
     fn gpu_sandbox_uses_template_runtime_class_name_when_set() {
         let template = SandboxTemplate {
             platform_config: Some(Struct {
-                fields: [(
+                fields: std::iter::once((
                     "runtime_class_name".to_string(),
                     Value {
                         kind: Some(Kind::StringValue("kata-containers".to_string())),
                     },
-                )]
-                .into_iter()
+                ))
                 .collect(),
             }),
             ..SandboxTemplate::default()
@@ -1635,13 +1635,12 @@ mod tests {
     fn non_gpu_sandbox_uses_template_runtime_class_name_when_set() {
         let template = SandboxTemplate {
             platform_config: Some(Struct {
-                fields: [(
+                fields: std::iter::once((
                     "runtime_class_name".to_string(),
                     Value {
                         kind: Some(Kind::StringValue("kata-containers".to_string())),
                     },
-                )]
-                .into_iter()
+                ))
                 .collect(),
             }),
             ..SandboxTemplate::default()
@@ -1850,9 +1849,7 @@ mod tests {
         // Verify we did not inject one (which would cause a duplicate).
         let has_pvc_vol = pod_template["spec"]["volumes"]
             .as_array()
-            .map_or(false, |vols| {
-                vols.iter().any(|v| v["name"] == WORKSPACE_VOLUME_NAME)
-            });
+            .is_some_and(|vols| vols.iter().any(|v| v["name"] == WORKSPACE_VOLUME_NAME));
         assert!(
             !has_pvc_vol,
             "apply_workspace_persistence must NOT add a PVC volume (the CRD controller does that)"
@@ -1932,16 +1929,14 @@ mod tests {
             pod_template["spec"]["initContainers"].is_null()
                 || pod_template["spec"]["initContainers"]
                     .as_array()
-                    .is_none_or(|a| a.is_empty()),
+                    .is_none_or(Vec::is_empty),
             "workspace init container must NOT be present when inject_workspace is false"
         );
 
         // No workspace volume mount on agent
         let has_workspace_mount = pod_template["spec"]["containers"][0]["volumeMounts"]
             .as_array()
-            .map_or(false, |mounts| {
-                mounts.iter().any(|m| m["name"] == WORKSPACE_VOLUME_NAME)
-            });
+            .is_some_and(|mounts| mounts.iter().any(|m| m["name"] == WORKSPACE_VOLUME_NAME));
         assert!(
             !has_workspace_mount,
             "workspace mount must NOT be present when inject_workspace is false"

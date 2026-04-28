@@ -43,7 +43,7 @@ impl PostgresStore {
     ) -> Result<()> {
         let now_ms = current_time_ms()?;
         let labels_jsonb: Option<serde_json::Value> = labels
-            .map(|s| serde_json::from_str(s))
+            .map(serde_json::from_str)
             .transpose()
             .map_err(|e| openshell_core::Error::execution(format!("invalid labels JSON: {e}")))?;
 
